@@ -78,7 +78,8 @@ export function getNumericProgress(
   const total = Number(totalStr);
 
   if (isNaN(current) || isNaN(total) || total <= 0) {
-    throw new Error("Invalid numeric strings passed to getNumericProgress()");
+    // throw new Error("Invalid numeric strings passed to getNumericProgress()");
+    console.log(`${isNaN(current)},${isNaN(total)},${total <= 0}`);
   }
 
   if (current <= 0) return 0;
