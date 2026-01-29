@@ -14,18 +14,20 @@ import {
   collection,
   deleteDoc,
   doc,
+  getDoc,
   getDocs,
   updateDoc,
 } from "firebase/firestore";
 import {
   DeleteIcon,
+  Key,
   LogOut,
   PlusIcon,
   SidebarCloseIcon,
   Trash2,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { auth, db } from "../firebase/config";
 import Image from "next/image";
 import logo from "@/public/cash.png";
@@ -66,13 +68,13 @@ interface FormData {
 }
 
 type DocumentsWithId = Documents & { id: string };
-export const PASS_DELETE = "mario4321=";
+//export const PASS_DELETE = "mario4321=";
 
 export default function Dashboard() {
   const [user, setUser] = useState<User | null>(null);
   const [doc1, setDoc] = useState<DocumentsWithId[]>([]);
   // const [copy, setCopy] = useState<DocumentsWithId[]>([]);
-
+  const password = useRef("");
   const [searchQuery, setSearchQuery] = useState("");
   const [passDelete, setPassDelete] = useState("");
   const [passDeleteOk, setPassDeleteOk] = useState(false);
@@ -1754,15 +1756,61 @@ export default function Dashboard() {
     },
   ];*/
   useEffect(() => {
-    setPassDeleteOk(passDelete === PASS_DELETE);
-  }, [passDelete]);
+    setPassDeleteOk(passDelete === password.current);
+  }, [passDelete, password.current]);
 
   // delete popup
   const [selectedDoc, setSelectedDoc] = useState<DocumentsWithId | null>(null);
   const [openConfirmPopup, setOpenConfirmPopup] = useState(false);
+  const [openChangePassWord, setOpenChangePassWord] = useState(false);
   const [openConfirmPopupDestroy, setOpenConfirmPopupDestroy] = useState(false);
+  const [oldPassword, setOldPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [passwordshow, setPasswordshow] = useState("");
 
   const router = useRouter();
+  const handleChangePassword = async () => {
+    setError("");
+    setLoading(true);
+    if (user?.email) {
+      try {
+        const userRef = doc(db, "user", user?.email);
+        const snap = await getDoc(userRef);
+
+        if (!snap.exists()) {
+          setError("User not found");
+          return;
+        }
+
+        const userData = snap.data();
+         
+        if (userData.password !== oldPassword) {
+          setError("Old password is incorrect");
+          return;
+        }
+
+        await updateDoc(userRef, {
+          password: newPassword,
+          updatedAt: new Date(),
+        });
+
+        setOpenChangePassWord(false);
+        setOldPassword("");
+        setNewPassword("");
+        alert("Password updated successfully");
+        window.location.reload();
+      } catch (err) {
+        console.error(err);
+        setError("Failed to update password");
+      } finally {
+        setLoading(false);
+      }
+    } else {
+      alert("Email non trouver");
+    }
+  };
 
   // ❌ EXCLURE les détruits
   const cleanedData = doc1.filter((d) => d.Detruit == "oui");
@@ -1841,6 +1889,17 @@ export default function Dashboard() {
     setDoc(docs);
     //setCopy(copy);
     console.log(copy);
+
+    const userRef = doc(db, "user", "mikeisme5@gmail.com");
+    const snap = await getDoc(userRef);
+
+    if (!snap.exists()) {
+      console.log("User not found");
+    }
+
+    const userData = snap.data();
+    password.current = userData?.password;
+    setPasswordshow(userData?.password)
   };
 
   useEffect(() => {
@@ -1916,7 +1975,50 @@ export default function Dashboard() {
         <p className="text-center my-2 text-gray-400 font-bold">
           développé par ING Orcel Euler. No 47656226
         </p>
+        
+        <Button
+          variant="destructive"
+          className="mt-3 sm:mt-0 sm:ml-4 flex items-center mx-auto my-2 gap-2"
+          onClick={() => {
+            // setSelectedDoc(data);
+            setOpenChangePassWord(true);
+          }}
+        >
+          <Key className="size-4" />
+          Changer le mot de passe
+        </Button>
+        <Dialog open={openChangePassWord} onOpenChange={setOpenChangePassWord}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Changer le mot de passe <span className="text-gray-600 font-mono">({passwordshow.slice(0,3)}****)</span> </DialogTitle>
+            </DialogHeader>
 
+            <Input
+              type="text"
+              placeholder="ancien password"
+              value={oldPassword}
+              onChange={(e) => setOldPassword(e.target.value)}
+            />
+
+            <Input
+              type="text"
+              placeholder="Nouveau password"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+            />
+
+            {error && <p className="text-sm text-red-500">{error}</p>}
+
+            <DialogFooter>
+              <Button
+                disabled={loading || !oldPassword || !newPassword}
+                onClick={handleChangePassword}
+              >
+                {loading ? "En cours..." : "Confirmer"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
         {/* Filters */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-5 bg-gray-50 rounded-3xl p-3 md:p-10">
           <div className="flex flex-col">

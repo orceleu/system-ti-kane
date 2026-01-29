@@ -24,7 +24,7 @@ import {
 } from "@/app/function/function";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import LockerTable from "@/app/clientComponent/table";
-import { PASS_DELETE } from "@/app/dashboard/page";
+//import { PASS_DELETE } from "@/app/dashboard/page";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { LoaderIcon } from "lucide-react";
 import { onAuthStateChanged, User } from "firebase/auth";
@@ -65,15 +65,30 @@ export default function PDFGenerator({
   const [passDelete, setPassDelete] = useState("");
   const [passDeleteOk, setPassDeleteOk] = useState(false);
   const [user, setUser] = useState<User | null>(null);
+  const password = useRef("");
+  const getCustomerdata = async (email: string) => {
+    if (email) {
+      const userRef = doc(db, "user", email);
+      const snap = await getDoc(userRef);
 
+      if (!snap.exists()) {
+        console.log("User not found");
+      }
+
+      const userData = snap.data();
+      password.current = userData?.password;
+    } else {
+      alert("User email non trouver!");
+    }
+  };
   const stringRef = useRef<string>("");
   useEffect(() => {
-    if (passDelete === PASS_DELETE) {
+    if (passDelete === password.current) {
       setPassDeleteOk(true);
     } else {
       setPassDeleteOk(false);
     }
-  }, [passDelete]);
+  }, [passDelete, password.current]);
   const appendString = (initial: string, add: string) => {
     if (!stringRef.current) {
       stringRef.current = initial;
@@ -199,12 +214,17 @@ export default function PDFGenerator({
         setLoading(false);
       }
     };
-
+    // getCustomerdata();
     fetchForm();
-  }, []);
+  }, [password.current]);
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
+      if (currentUser?.email) {
+        getCustomerdata(currentUser?.email);
+      } else {
+        alert("User email non trouver");
+      }
     });
     return () => unsubscribe();
   }, []);
