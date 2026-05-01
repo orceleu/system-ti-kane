@@ -1785,7 +1785,7 @@ export default function Dashboard() {
         }
 
         const userData = snap.data();
-         
+
         if (userData.password !== oldPassword) {
           setError("Old password is incorrect");
           return;
@@ -1823,7 +1823,7 @@ export default function Dashboard() {
     const docDate = data.StartDate.split(" ")[0];
 
     const nameMatch = data.Nom.toLowerCase().includes(
-      searchQuery.toLowerCase()
+      searchQuery.toLowerCase(),
     );
 
     let exactMatch = true;
@@ -1853,17 +1853,17 @@ export default function Dashboard() {
   // TOTALS
   const totalBalanceSum = filteredData.reduce(
     (acc, item) => acc + Number(item.Balance),
-    0
+    0,
   );
 
   const totalExpectedSum = filteredData.reduce(
     (acc, item) => acc + Number(item.TotalBalance),
-    0
+    0,
   );
   const tri = doc1.filter((d) => d.Detruit == "oui");
   const totaldetruit = tri.reduce(
     (acc, item) => acc + Number(item.TotalBalance),
-    0
+    0,
   );
   const deleteDocument = async (collectionName: string, docId: string) => {
     try {
@@ -1899,7 +1899,7 @@ export default function Dashboard() {
 
     const userData = snap.data();
     password.current = userData?.password;
-    setPasswordshow(userData?.password)
+    setPasswordshow(userData?.password);
   };
 
   useEffect(() => {
@@ -1975,7 +1975,7 @@ export default function Dashboard() {
         <p className="text-center my-2 text-gray-400 font-bold">
           développé par ING Orcel Euler. No 47656226
         </p>
-        
+
         <Button
           variant="destructive"
           className="mt-3 sm:mt-0 sm:ml-4 flex items-center mx-auto my-2 gap-2"
@@ -1990,7 +1990,12 @@ export default function Dashboard() {
         <Dialog open={openChangePassWord} onOpenChange={setOpenChangePassWord}>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Changer le mot de passe <span className="text-gray-600 font-mono">({passwordshow.slice(0,3)}****)</span> </DialogTitle>
+              <DialogTitle>
+                Changer le mot de passe{" "}
+                <span className="text-gray-600 font-mono">
+                  ({passwordshow.slice(0, 3)}****)
+                </span>{" "}
+              </DialogTitle>
             </DialogHeader>
 
             <Input
@@ -2138,9 +2143,9 @@ export default function Dashboard() {
                 data.Detruit === "oui"
                   ? "bg-red-200 text-red-700 border-red-400"
                   : useProgress(data.StartDate, data.EndDate) >= 99 ||
-                    getNumericProgress(data.Balance, data.TotalBalance) >= 99
-                  ? "bg-green-400 text-white"
-                  : "bg-white"
+                      getNumericProgress(data.Balance, data.TotalBalance) >= 99
+                    ? "bg-green-400 text-white"
+                    : "bg-white"
               }
             `}
             >
@@ -2160,14 +2165,14 @@ export default function Dashboard() {
                     <p>
                       <span className="font-bold">Début :</span>
                       {formatReadableDate(
-                        getLocalISOWithoutSeconds(data.StartDate)
+                        getLocalISOWithoutSeconds(data.StartDate),
                       )}
                     </p>
 
                     <p className="ml-3">
                       <span className="font-bold">Fin :</span>
                       {formatReadableDate(
-                        getLocalISOWithoutSeconds(data.EndDate)
+                        getLocalISOWithoutSeconds(data.EndDate),
                       )}
                     </p>
                   </div>
@@ -2350,7 +2355,7 @@ export default function Dashboard() {
                 if (selectedDoc)
                   termitatePlan(
                     selectedDoc.id,
-                    `${selectedDoc.Nom} ${selectedDoc.Prenom}`
+                    `${selectedDoc.Nom} ${selectedDoc.Prenom}`,
                   );
                 setOpenConfirmPopupDestroy(false);
                 setPassDeleteOk(false);
