@@ -1890,7 +1890,7 @@ export default function Dashboard() {
     //setCopy(copy);
     console.log(copy);
 
-    const userRef = doc(db, "user", "mikeisme5@gmail.com");
+    const userRef = doc(db, "user", "test4321@gmail.com");
     const snap = await getDoc(userRef);
 
     if (!snap.exists()) {
@@ -1955,7 +1955,7 @@ export default function Dashboard() {
           </div>
         </div>
 
-        <p className="text-xl text-gray-700 font-bold">MARIO CASH.</p>
+        <p className="text-xl text-gray-700 font-bold">Ti kane </p>
         <div className="flex items-center gap-3">
           <Button
             variant="outline"
