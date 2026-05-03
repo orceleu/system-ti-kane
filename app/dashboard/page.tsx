@@ -1975,6 +1975,9 @@ export default function Dashboard() {
         <p className="text-center text-sm md:text-[14[px] my-2 text-gray-400 font-bold">
           développé par ING Orcel Euler. No 47656226
         </p>
+        <p className="text-center text-sm md:text-[14[px] my-2 text-gray-400 font-bold">
+          & Mr Paillant No 43117879
+        </p>
 
         <Button
           variant="destructive"
