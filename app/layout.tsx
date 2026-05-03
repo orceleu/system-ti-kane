@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Bienvenue à Mario Cash",
-  description: "MARIO CASH ti kanè!",
+  title: "ti kanè",
+  description: "CASH ti kanè!",
 };
 
 export default function RootLayout({
