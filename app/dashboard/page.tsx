@@ -1975,9 +1975,6 @@ export default function Dashboard() {
         <p className="text-center text-sm md:text-[14[px] my-2 text-gray-400 font-bold">
           développé par ING Orcel Euler. No 47656226
         </p>
-        <p className="text-center text-sm md:text-[14[px] my-2 text-gray-400 font-bold">
-          & Mr Paillant No 43117879
-        </p>
 
         <Button
           variant="destructive"
@@ -1996,8 +1993,8 @@ export default function Dashboard() {
               <DialogTitle>
                 Changer le mot de passe{" "}
                 <span className="text-gray-600 font-mono">
-                  ({passwordshow.slice(0, 3)}****)
-                </span>{" "}
+                  ({passwordshow?.slice(0, 3) || ""}****)
+                </span>
               </DialogTitle>
             </DialogHeader>
 
