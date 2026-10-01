@@ -1,10 +1,12 @@
 "use client";
-import React, { useEffect, useRef, useState } from "react";
+
+import React, { useEffect, useRef, useState, useMemo } from "react";
 import Image from "next/image";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import logo from "@/public/cash.png";
 import { doc, getDoc, updateDoc } from "firebase/firestore";
 import { auth, db } from "@/app/firebase/config";
-
 import {
   Dialog,
   DialogTrigger,
@@ -14,7 +16,6 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
-
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -22,12 +23,29 @@ import {
   generateData,
   getLocalISOWithoutSeconds,
 } from "@/app/function/function";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import LockerTable from "@/app/clientComponent/table";
-//import { PASS_DELETE } from "@/app/dashboard/page";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { LoaderIcon } from "lucide-react";
-import { onAuthStateChanged, User } from "firebase/auth";
+import {
+  LoaderIcon,
+  ArrowLeft,
+  Printer,
+  PlusCircle,
+  MinusCircle,
+  CreditCard,
+  User,
+  Calendar,
+  Phone,
+  FileText,
+  ShieldCheck,
+  AlertCircle,
+  HandCoins,
+  CheckCircle2,
+  Lock,
+  Percent,
+  Sparkles,
+} from "lucide-react";
+import { onAuthStateChanged, User as FirebaseUser } from "firebase/auth";
+import { addHistoryEntry } from "@/app/function/history";
 
 interface FormData {
   id: string;
@@ -45,16 +63,18 @@ interface FormData {
   Detruit: string;
 }
 
+const STORAGE_KEY_TAUX = "mario_cash_taux_interet";
+
 export default function PDFGenerator({
   params,
 }: {
   params: Promise<{ slug: string }>;
 }) {
-  const [loading, setLoading] = useState(false);
+  const router = useRouter();
+  const [loading, setLoading] = useState(true);
   const [form, setForm] = useState<FormData | null>(null);
   const docKey = useRef("");
   const [amount, setAmount] = useState("");
-  const [test, setest] = useState("");
   const [loadingAdd, setLoadingAdd] = useState(false);
   const [loadingRemove, setLoadingRemove] = useState(false);
   const [errorLimit, setErrorLimit] = useState("");
@@ -64,8 +84,25 @@ export default function PDFGenerator({
   const [openRemove, setOpenRemove] = useState(false);
   const [passDelete, setPassDelete] = useState("");
   const [passDeleteOk, setPassDeleteOk] = useState(false);
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<FirebaseUser | null>(null);
   const password = useRef("");
+
+  // Interest rate from localStorage
+  const [storedTaux, setStoredTaux] = useState("5");
+  const [loanSimMontant, setLoanSimMontant] = useState("10000");
+  const [loanSimMois, setLoanSimMois] = useState("6");
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY_TAUX);
+      if (saved) {
+        setStoredTaux(saved);
+      }
+    } catch (e) {
+      console.error("Erreur lecture localStorage:", e);
+    }
+  }, []);
+
   const getCustomerdata = async (email: string) => {
     if (email) {
       const userRef = doc(db, "user", email);
@@ -73,22 +110,23 @@ export default function PDFGenerator({
 
       if (!snap.exists()) {
         console.log("User not found");
+      } else {
+        const userData = snap.data();
+        password.current = userData?.password;
       }
-
-      const userData = snap.data();
-      password.current = userData?.password;
-    } else {
-      alert("User email non trouver!");
     }
   };
+
   const stringRef = useRef<string>("");
+
   useEffect(() => {
-    if (passDelete === password.current) {
+    if (passDelete && passDelete === password.current) {
       setPassDeleteOk(true);
     } else {
       setPassDeleteOk(false);
     }
-  }, [passDelete, password.current]);
+  }, [passDelete]);
+
   const appendString = (initial: string, add: string) => {
     if (!stringRef.current) {
       stringRef.current = initial;
@@ -106,38 +144,42 @@ export default function PDFGenerator({
     const current = Number(form?.Balance ?? 0);
     const total = Number(form?.TotalBalance ?? 0);
 
-    if (Number.isNaN(numeric) || numeric < 0) {
-      setErrorLimit("Le montant ne peut pas être négatif.");
+    if (Number.isNaN(numeric) || numeric <= 0) {
+      setErrorLimit("Veuillez entrer un montant valide supérieur à 0.");
       return;
     }
 
     if (current + numeric > total) {
-      setErrorLimit("Ajouter ce montant dépasserait la limite totale.");
+      setErrorLimit("Ajouter ce montant dépasserait le total prévu pour le carnet.");
     }
 
     if (numeric > current) {
-      setErrorLimitRemove(
-        "Impossible de retirer plus que la balance actuelle."
-      );
+      setErrorLimitRemove("Impossible de retirer plus que la balance actuelle.");
     }
   }
 
   async function addFunds() {
-    if (!form || errorLimit) return;
-    setPassDeleteOk(false);
-    setPassDelete("");
+    if (!form || errorLimit || !passDeleteOk) return;
     setLoadingAdd(true);
-    const newValue = Number(form.Balance) + Number(amount);
+    const numericAmount = Number(amount);
+    const newValue = Number(form.Balance) + numericAmount;
 
     try {
       const ref = doc(db, "doc", form.id);
+      const newHistoric = appendString(
+        form.Historic,
+        generateData(numericAmount, Number(form.DailyMoney), "dep")
+      );
 
       await updateDoc(ref, {
         Balance: String(newValue),
-        Historic: appendString(
-          form.Historic,
-          generateData(Number(amount), Number(form.DailyMoney), "dep")
-        ),
+        Historic: newHistoric,
+      });
+
+      addHistoryEntry({
+        type: "depot",
+        description: `Dépôt: ${form.Nom} ${form.Prenom}`,
+        details: `Montant: +${numericAmount}$ht · Nouvelle balance: ${newValue}$ht`,
       });
 
       setForm((prev) =>
@@ -145,52 +187,73 @@ export default function PDFGenerator({
           ? {
               ...prev,
               Balance: String(newValue),
+              Historic: newHistoric,
             }
           : prev
       );
-      alert(`Vous avez ajouté: ${amount} $ a votre balance!`);
+
       setAmount("");
+      setPassDelete("");
+      setPassDeleteOk(false);
       setOpenAdd(false);
-      window.location.reload();
+      alert(`Dépôt effectué avec succès: +${numericAmount} $ht !`);
     } catch (err) {
       console.error("Erreur ajout fund:", err);
+      alert("Erreur lors de l'enregistrement du dépôt.");
     } finally {
       setLoadingAdd(false);
     }
   }
+
   async function removeFunds() {
-    if (!form || errorLimitRemove) return;
-    setPassDeleteOk(false);
-    setPassDelete("");
-    if (Number(form?.Balance ?? 0) - Number(amount) < 0) {
-      setErrorLimit("Impossible de retirer plus que la balance actuelle.");
-      alert("Impossible de retirer plus que la balance actuelle.");
-    } else {
-      setLoadingRemove(true);
-      const newValue = Number(form.Balance) - Number(amount);
+    if (!form || errorLimitRemove || !passDeleteOk) return;
+    const numericAmount = Number(amount);
+    if (Number(form?.Balance ?? 0) - numericAmount < 0) {
+      setErrorLimitRemove("Impossible de retirer plus que la balance actuelle.");
+      return;
+    }
 
-      try {
-        const ref = doc(db, "doc", form.id);
-        await updateDoc(ref, {
-          Balance: String(newValue),
-          Historic: appendString(
-            form.Historic,
-            generateData(Number(amount), Number(form.DailyMoney), "retr")
-          ),
-        });
+    setLoadingRemove(true);
+    const newValue = Number(form.Balance) - numericAmount;
 
-        setForm((prev) =>
-          prev ? { ...prev, Balance: String(newValue) } : prev
-        );
-        setAmount("");
-        setOpenRemove(false);
-        alert(`Vous avez retirer: ${amount} $ de votre balance!`);
-        window.location.reload();
-      } catch (err) {
-        console.error("Erreur retrait fond:", err);
-      } finally {
-        setLoadingRemove(false);
-      }
+    try {
+      const ref = doc(db, "doc", form.id);
+      const newHistoric = appendString(
+        form.Historic,
+        generateData(numericAmount, Number(form.DailyMoney), "retr")
+      );
+
+      await updateDoc(ref, {
+        Balance: String(newValue),
+        Historic: newHistoric,
+      });
+
+      addHistoryEntry({
+        type: "retrait",
+        description: `Retrait: ${form.Nom} ${form.Prenom}`,
+        details: `Montant: -${numericAmount}$ht · Nouvelle balance: ${newValue}$ht`,
+      });
+
+      setForm((prev) =>
+        prev
+          ? {
+              ...prev,
+              Balance: String(newValue),
+              Historic: newHistoric,
+            }
+          : prev
+      );
+
+      setAmount("");
+      setPassDelete("");
+      setPassDeleteOk(false);
+      setOpenRemove(false);
+      alert(`Retrait effectué avec succès: -${numericAmount} $ht !`);
+    } catch (err) {
+      console.error("Erreur retrait fond:", err);
+      alert("Erreur lors du retrait.");
+    } finally {
+      setLoadingRemove(false);
     }
   }
 
@@ -214,294 +277,577 @@ export default function PDFGenerator({
         setLoading(false);
       }
     };
-    // getCustomerdata();
     fetchForm();
-  }, [password.current]);
+  }, [params]);
+
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
       if (currentUser?.email) {
-        getCustomerdata(currentUser?.email);
-      } else {
-        alert("User email non trouver");
+        getCustomerdata(currentUser.email);
       }
     });
     return () => unsubscribe();
   }, []);
 
-  if (!form) {
+  // Loan simulation calculation using stored rate
+  const simTotalInterest = useMemo(() => {
+    const m = Number(loanSimMontant) || 0;
+    const t = Number(storedTaux) || 0;
+    const d = Number(loanSimMois) || 1;
+    return (m * t * d) / 100;
+  }, [loanSimMontant, storedTaux, loanSimMois]);
+
+  const simTotalDu = useMemo(() => {
+    return (Number(loanSimMontant) || 0) + simTotalInterest;
+  }, [loanSimMontant, simTotalInterest]);
+
+  const simMensualite = useMemo(() => {
+    const d = Number(loanSimMois) || 1;
+    return d > 0 ? simTotalDu / d : 0;
+  }, [simTotalDu, loanSimMois]);
+
+  if (loading || !form) {
     return (
-      <div className="p-4 flex justify-center mt-40">
-        <LoaderIcon className="animate-spin" />
+      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4">
+        <LoaderIcon className="w-8 h-8 text-violet-600 animate-spin mb-3" />
+        <p className="text-slate-500 text-sm font-medium">
+          Chargement du carnet client...
+        </p>
       </div>
     );
   }
 
+  const currentBalance = Number(form.Balance) || 0;
+  const totalBalance = Number(form.TotalBalance) || 1;
+  const progressPercent = Math.min(
+    100,
+    Math.round((currentBalance / totalBalance) * 100)
+  );
+  const isDestroyed = form.Detruit === "oui";
+
   return (
-    <div className="p-4 max-w-4xl mx-auto">
-      {/* Bandeau d'entête */}
-      <div className="w-full bg-slate-100 py-6 px-4">
-        <div className="flex flex-wrap justify-between items-center gap-6">
-          <Image src={logo} alt="logo" className="w-16 h-16 object-contain" />
+    <div className="min-h-screen bg-slate-50 py-6 px-4 sm:px-6 lg:px-8 print:p-0 print:bg-white text-slate-800">
+      <div className="max-w-4xl mx-auto space-y-6">
+        {/* Navigation & Action Bar */}
+        <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-slate-200 shadow-xs print:hidden">
+          <Link
+            href="/dashboard"
+            className="inline-flex items-center gap-2 text-xs font-semibold text-slate-600 hover:text-slate-900 bg-slate-50 hover:bg-slate-100 px-3 py-2 rounded-xl transition-colors border border-slate-200"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            Retour au Tableau de Bord
+          </Link>
 
-          <div className="flex-1 text-center">
-            <p className="text-xl md:text-2xl font-bold mb-2">Mario Cash</p>
-            <ol className="text-[10px] md:text-[15px] text-gray-600">
-              <li>1- Le carnet est obligatoire pour toute transaction.</li>
-              <li>
-                2- En cas de perte du carnet un frais doit etre versé pour le
-                remplacement.
-              </li>
-            </ol>
-          </div>
+          <div className="flex items-center gap-2">
+            <span
+              className={`text-xs font-semibold px-3 py-1 rounded-full border ${
+                isDestroyed
+                  ? "bg-rose-50 text-rose-700 border-rose-200"
+                  : "bg-emerald-50 text-emerald-700 border-emerald-200"
+              }`}
+            >
+              {isDestroyed ? "Carnet Clôturé / Détruit" : "Carnet Actif"}
+            </span>
 
-          <div className="text-right text-sm text-gray-800">
-            <p className="font-medium">Le :</p>
-            <p>
-              {formatReadableDate(getLocalISOWithoutSeconds(form.StartDate))}
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* Section informations */}
-      <div className="bg-gray-50 p-6 mt-8 rounded-lg border">
-        <h2 className="text-lg font-bold mb-4 text-gray-700 text-center">
-          Informations client & compte (Detruit? :{" "}
-          <span className="font-bold">{form?.Detruit}</span>)
-        </h2>
-        <div className="bg-gray-50 p-6 mt-8 rounded-lg border">
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm text-gray-800">
-            <p>
-              <strong>Nom :</strong> {form.Nom}
-            </p>
-            <p>
-              <strong>Prénom :</strong> {form.Prenom}
-            </p>
-            <p>
-              <strong>Début :</strong>{" "}
-              {formatReadableDate(getLocalISOWithoutSeconds(form.StartDate))}
-            </p>
-
-            <p>
-              <strong>Fin :</strong>{" "}
-              {formatReadableDate(getLocalISOWithoutSeconds(form.EndDate))}
-            </p>
-            <p>
-              <strong>Plan :</strong> {form.Plan} Jours
-            </p>
-            <p className="text-green-600">
-              <strong>Montant quotidien :</strong> {form.DailyMoney} $ht
-            </p>
-            <p>
-              <strong>NIF / CIN :</strong> {form.NIF}
-            </p>
-
-            <p>
-              <strong>Téléphone :</strong> {form.Phone}
-            </p>
-            <p>
-              <strong>Total :</strong> {form.TotalBalance} $ht
-            </p>
-            <p>
-              <strong>Balance :</strong> {form.Balance} $ht
-            </p>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => window.print()}
+              className="text-xs font-semibold text-slate-700 border-slate-200 gap-1.5 rounded-xl h-9"
+            >
+              <Printer className="w-3.5 h-3.5" />
+              Imprimer / PDF
+            </Button>
           </div>
         </div>
-        <div className="bg-white p-4 rounded-lg border  mt-6 space-y-4">
-          <p className="text-lg font-semibold text-center">
-            Solde : {form.Balance} $ht / {form.TotalBalance} $ht
-          </p>
-          <div className="flex justify-center">
+
+        {/* Main Passbook Card */}
+        <div className="bg-white rounded-3xl border border-slate-200 shadow-xs overflow-hidden print:border-none print:shadow-none">
+          {/* Header Banner */}
+          <div className="bg-gradient-to-r from-violet-600 via-indigo-600 to-violet-700 text-white p-6 sm:p-8">
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-6">
+              <div className="flex items-center gap-4 text-center sm:text-left">
+                <div className="w-16 h-16 rounded-2xl bg-white/10 backdrop-blur-md p-2 flex items-center justify-center border border-white/20 shadow-md">
+                  <Image
+                    src={logo}
+                    alt="Mario Cash"
+                    className="w-12 h-12 object-contain"
+                  />
+                </div>
+                <div>
+                  <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-white">
+                    Mario Cash
+                  </h1>
+                  <p className="text-violet-200 text-xs sm:text-sm font-medium">
+                    Carnet Numérique d&apos;Épargne & Finance
+                  </p>
+                </div>
+              </div>
+
+              <div className="text-center sm:text-right bg-white/10 backdrop-blur-xs px-4 py-2.5 rounded-2xl border border-white/15">
+                <p className="text-[11px] text-violet-200 uppercase font-semibold">
+                  Date d&apos;ouverture
+                </p>
+                <p className="text-sm font-bold text-white">
+                  {formatReadableDate(getLocalISOWithoutSeconds(form.StartDate))}
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-5 pt-4 border-t border-white/10 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-violet-100">
+              <span className="flex items-center gap-1.5">
+                <ShieldCheck className="w-4 h-4 text-violet-200" />
+                Règlement : Carnet obligatoire pour toute transaction.
+              </span>
+              <span className="text-[11px] opacity-80">
+                En cas de perte, des frais s&apos;appliquent pour le remplacement.
+              </span>
+            </div>
+          </div>
+
+          {/* Client & Account Details */}
+          <div className="p-6 sm:p-8 space-y-6">
             <div>
-              {/* INPUT */}
-              <Input
-                placeholder="Montant"
-                value={amount}
-                onChange={(e) => validateAmount(e.target.value)}
-                type="number"
-                className="w-full my-2"
-              />
-              <Tabs defaultValue="100jours">
-                <TabsList>
-                  <TabsTrigger
-                    value="100jours"
-                    onClick={() => {
-                      validateAmount("50");
-                    }}
-                  >
-                    50 $ht
-                  </TabsTrigger>
-                  <TabsTrigger
-                    value="200jours"
-                    onClick={() => {
-                      validateAmount("100");
-                    }}
-                  >
-                    100 $ht
-                  </TabsTrigger>
-                  <TabsTrigger
-                    value="300jours"
-                    onClick={() => {
-                      validateAmount("150");
-                    }}
-                  >
-                    150 $ht
-                  </TabsTrigger>
-                  <TabsTrigger
-                    value="400jours"
-                    onClick={() => {
-                      validateAmount("200");
-                    }}
-                  >
-                    200 $ht
-                  </TabsTrigger>
-                  <TabsTrigger
-                    value="500jours"
-                    onClick={() => {
-                      validateAmount("300");
-                    }}
-                  >
-                    300 $ht
-                  </TabsTrigger>
-                </TabsList>
-              </Tabs>
+              <h2 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">
+                Informations du Bénéficiaire
+              </h2>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200/80">
+                  <span className="text-[11px] font-medium text-slate-500 block mb-0.5">
+                    Nom & Prénom
+                  </span>
+                  <p className="text-sm font-bold text-slate-900 truncate">
+                    {form.Nom} {form.Prenom}
+                  </p>
+                </div>
+
+                <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200/80">
+                  <span className="text-[11px] font-medium text-slate-500 block mb-0.5">
+                    Téléphone
+                  </span>
+                  <p className="text-sm font-bold text-slate-900 truncate">
+                    {form.Phone || "—"}
+                  </p>
+                </div>
+
+                <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200/80">
+                  <span className="text-[11px] font-medium text-slate-500 block mb-0.5">
+                    NIF / CIN
+                  </span>
+                  <p className="text-sm font-bold text-slate-900 truncate font-mono">
+                    {form.NIF || "—"}
+                  </p>
+                </div>
+
+                <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200/80">
+                  <span className="text-[11px] font-medium text-slate-500 block mb-0.5">
+                    Plan choisi
+                  </span>
+                  <p className="text-sm font-bold text-violet-700">
+                    {form.Plan} Jours
+                  </p>
+                </div>
+              </div>
             </div>
-          </div>
 
-          {errorLimit && (
-            <p className="text-red-600 text-sm text-center">
-              {errorLimit} {errorLimitRemove}
-            </p>
-          )}
-          <div className="flex justify-center">
-            <div className="flex items-center gap-3 mt-3">
-              {/* AJOUT */}
-              <Dialog open={openAdd} onOpenChange={setOpenAdd}>
-                <DialogTrigger asChild>
-                  <Button
-                    className="bg-green-600 hover:bg-green-500"
-                    disabled={!amount || !!errorLimit}
-                  >
-                    Ajouter des fonds
-                  </Button>
-                </DialogTrigger>
+            {/* Plan Dates & Daily Contribution */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200/80 flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-violet-100 text-violet-600 flex items-center justify-center flex-shrink-0">
+                  <Calendar className="w-4 h-4" />
+                </div>
+                <div>
+                  <span className="text-[11px] font-medium text-slate-500 block">
+                    Début
+                  </span>
+                  <p className="text-xs font-bold text-slate-800">
+                    {formatReadableDate(getLocalISOWithoutSeconds(form.StartDate))}
+                  </p>
+                </div>
+              </div>
 
-                <DialogContent>
-                  <DialogHeader>
-                    <DialogTitle>Confirmer l'ajout</DialogTitle>
-                    <DialogDescription>
-                      Voulez-vous ajouter <strong>{amount}$ht</strong> à la
-                      balance ? Entrer votre mot de passe!
-                      <Input
-                        type="password"
-                        value={passDelete}
-                        onChange={(e) => {
-                          setPassDelete(e.target.value);
-                        }}
-                        className="my-3"
-                      />
-                      {passDeleteOk ? (
-                        <span className="text-green-500">autorisé</span>
-                      ) : (
-                        <span className="text-red-500">non authorisé</span>
-                      )}
-                    </DialogDescription>
-                  </DialogHeader>
+              <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200/80 flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-indigo-100 text-indigo-600 flex items-center justify-center flex-shrink-0">
+                  <Calendar className="w-4 h-4" />
+                </div>
+                <div>
+                  <span className="text-[11px] font-medium text-slate-500 block">
+                    Fin prévue
+                  </span>
+                  <p className="text-xs font-bold text-slate-800">
+                    {formatReadableDate(getLocalISOWithoutSeconds(form.EndDate))}
+                  </p>
+                </div>
+              </div>
 
-                  <DialogFooter>
-                    <Button
-                      variant="secondary"
-                      onClick={() => {
-                        setOpenAdd(false);
-                        setPassDeleteOk(false);
-                        setPassDelete("");
-                      }}
+              <div className="bg-emerald-50/60 p-3.5 rounded-2xl border border-emerald-200/70 flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center flex-shrink-0">
+                  <CreditCard className="w-4 h-4" />
+                </div>
+                <div>
+                  <span className="text-[11px] font-medium text-emerald-700 block">
+                    Cotisation Quotidienne
+                  </span>
+                  <p className="text-sm font-black text-emerald-800">
+                    {form.DailyMoney} $ht / jour
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Solde & Progress Card */}
+            <div className="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-2xl p-6 shadow-md">
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mb-4">
+                <div>
+                  <span className="text-xs font-medium text-slate-400 uppercase tracking-wider block">
+                    Solde Actuel Collecté
+                  </span>
+                  <div className="flex items-baseline gap-2 mt-1">
+                    <span className="text-3xl sm:text-4xl font-black text-emerald-400">
+                      {currentBalance.toLocaleString()} $ht
+                    </span>
+                    <span className="text-sm text-slate-400">
+                      / {Number(form.TotalBalance).toLocaleString()} $ht attendu
+                    </span>
+                  </div>
+                </div>
+
+                <div className="text-center sm:text-right">
+                  <span className="text-xs text-slate-400 block">
+                    Reste à collecter
+                  </span>
+                  <span className="text-lg font-bold text-amber-300">
+                    {Math.max(0, Number(form.TotalBalance) - currentBalance).toLocaleString()} $ht
+                  </span>
+                </div>
+              </div>
+
+              {/* Progress Bar */}
+              <div className="space-y-1.5">
+                <div className="flex justify-between text-xs text-slate-300">
+                  <span>Progression globale</span>
+                  <span className="font-bold text-emerald-400">
+                    {progressPercent}% complété
+                  </span>
+                </div>
+                <div className="w-full h-3 rounded-full bg-slate-700 overflow-hidden border border-slate-600">
+                  <div
+                    className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-teal-400 transition-all duration-300"
+                    style={{ width: `${progressPercent}%` }}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Operations & Quick Actions (Hidden in Print) */}
+            {!isDestroyed && (
+              <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs space-y-4 print:hidden">
+                <h3 className="text-xs font-bold text-slate-600 uppercase tracking-wider">
+                  Effectuer un Dépôt ou un Retrait
+                </h3>
+
+                {/* Quick amount chips */}
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs text-slate-500 font-medium mr-1">
+                    Montants rapides :
+                  </span>
+                  {["50", "100", "150", "200", "300"].map((val) => (
+                    <button
+                      key={val}
+                      type="button"
+                      onClick={() => validateAmount(val)}
+                      className={`text-xs font-semibold px-3 py-1.5 rounded-lg border transition-all ${
+                        amount === val
+                          ? "bg-violet-600 text-white border-violet-600 shadow-2xs"
+                          : "bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100"
+                      }`}
                     >
-                      Annuler
-                    </Button>
+                      {val} $ht
+                    </button>
+                  ))}
+                </div>
 
-                    <Button
-                      onClick={addFunds}
-                      disabled={loadingAdd || !!errorLimit || !passDeleteOk}
-                    >
-                      {loadingAdd ? "Chargement..." : "Confirmer"}
-                    </Button>
-                  </DialogFooter>
-                </DialogContent>
-              </Dialog>
+                {/* Amount input */}
+                <div className="max-w-md">
+                  <label className="text-xs font-semibold text-slate-600 mb-1 block">
+                    Montant de la transaction ($ht)
+                  </label>
+                  <Input
+                    type="number"
+                    placeholder="Entrez le montant en $ht..."
+                    value={amount}
+                    onChange={(e) => validateAmount(e.target.value)}
+                    className="bg-slate-50 border-slate-200 text-slate-900 font-bold text-base h-11 rounded-xl"
+                  />
+                  {errorLimit && (
+                    <p className="text-rose-600 text-xs font-medium mt-1.5 flex items-center gap-1">
+                      <AlertCircle className="w-3.5 h-3.5" />
+                      {errorLimit}
+                    </p>
+                  )}
+                  {errorLimitRemove && (
+                    <p className="text-rose-600 text-xs font-medium mt-1.5 flex items-center gap-1">
+                      <AlertCircle className="w-3.5 h-3.5" />
+                      {errorLimitRemove}
+                    </p>
+                  )}
+                </div>
 
-              {/* RETRAIT */}
-              <Dialog open={openRemove} onOpenChange={setOpenRemove}>
-                <DialogTrigger asChild>
-                  <Button
-                    variant="destructive"
-                    disabled={!amount || !!errorLimitRemove}
-                  >
-                    Retirer des fonds
-                  </Button>
-                </DialogTrigger>
+                {/* Action Buttons */}
+                <div className="flex flex-wrap gap-3 pt-2">
+                  {/* AJOUTER DES FONDS (DEPOT) */}
+                  <Dialog open={openAdd} onOpenChange={setOpenAdd}>
+                    <DialogTrigger asChild>
+                      <Button
+                        className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-xl h-10 px-5 gap-2 shadow-xs"
+                        disabled={!amount || Number(amount) <= 0 || !!errorLimit}
+                      >
+                        <PlusCircle className="w-4 h-4" />
+                        Ajouter des fonds (Dépôt)
+                      </Button>
+                    </DialogTrigger>
 
-                <DialogContent>
-                  <DialogHeader>
-                    <DialogTitle>Confirmer le retrait</DialogTitle>
-                    <DialogDescription>
-                      Voulez-vous retirer <strong>{amount}$ht</strong> de la
-                      balance ?
-                      <Input
-                        type="password"
-                        value={passDelete}
-                        onChange={(e) => {
-                          setPassDelete(e.target.value);
-                        }}
-                        className="my-3"
-                      />
-                      {passDeleteOk ? (
-                        <span className="text-green-500">autorisé</span>
-                      ) : (
-                        <span className="text-red-500">non authorisé</span>
-                      )}
-                    </DialogDescription>
-                  </DialogHeader>
+                    <DialogContent className="bg-white border border-slate-200 text-slate-900 max-w-md rounded-2xl shadow-xl">
+                      <DialogHeader>
+                        <DialogTitle className="text-slate-900 text-lg font-bold flex items-center gap-2">
+                          <PlusCircle className="w-5 h-5 text-emerald-600" />
+                          Confirmer le dépôt
+                        </DialogTitle>
+                        <DialogDescription className="text-slate-500 text-xs">
+                          Ajout de <strong>{amount} $ht</strong> au carnet de{" "}
+                          <strong>{form.Nom} {form.Prenom}</strong>.
+                        </DialogDescription>
+                      </DialogHeader>
 
-                  <DialogFooter>
-                    <Button
-                      variant="secondary"
-                      onClick={() => {
-                        setOpenRemove(false);
-                        setPassDeleteOk(false);
-                        setPassDelete("");
-                      }}
-                    >
-                      Annuler
-                    </Button>
+                      <div className="py-3 space-y-2">
+                        <label className="text-xs font-semibold text-slate-700 block">
+                          Entrez votre mot de passe gestionnaire pour autoriser :
+                        </label>
+                        <div className="relative">
+                          <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                          <Input
+                            type="password"
+                            placeholder="Mot de passe"
+                            value={passDelete}
+                            onChange={(e) => setPassDelete(e.target.value)}
+                            className="pl-9 bg-slate-50 border-slate-200 text-slate-900"
+                            autoFocus
+                          />
+                        </div>
+                        {passDelete && (
+                          <div className="text-xs font-semibold pt-1">
+                            {passDeleteOk ? (
+                              <span className="text-emerald-600 flex items-center gap-1">
+                                <CheckCircle2 className="w-3.5 h-3.5" /> Mot de passe correct (Autorisé)
+                              </span>
+                            ) : (
+                              <span className="text-rose-600 flex items-center gap-1">
+                                <AlertCircle className="w-3.5 h-3.5" /> Mot de passe incorrect
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
 
-                    <Button
-                      onClick={removeFunds}
-                      disabled={
-                        loadingRemove || !!errorLimitRemove || !passDeleteOk
-                      }
-                    >
-                      {loadingRemove ? "Chargement..." : "Confirmer"}
-                    </Button>
-                  </DialogFooter>
-                </DialogContent>
-              </Dialog>
+                      <DialogFooter className="gap-2 sm:gap-0">
+                        <Button
+                          variant="outline"
+                          onClick={() => {
+                            setOpenAdd(false);
+                            setPassDelete("");
+                            setPassDeleteOk(false);
+                          }}
+                          className="border-slate-200 text-slate-600 hover:bg-slate-50"
+                        >
+                          Annuler
+                        </Button>
+                        <Button
+                          onClick={addFunds}
+                          disabled={loadingAdd || !passDeleteOk}
+                          className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold"
+                        >
+                          {loadingAdd ? "Traitement..." : "Confirmer le dépôt"}
+                        </Button>
+                      </DialogFooter>
+                    </DialogContent>
+                  </Dialog>
+
+                  {/* RETIRER DES FONDS */}
+                  <Dialog open={openRemove} onOpenChange={setOpenRemove}>
+                    <DialogTrigger asChild>
+                      <Button
+                        variant="destructive"
+                        className="bg-rose-600 hover:bg-rose-700 text-white font-semibold rounded-xl h-10 px-5 gap-2 shadow-xs"
+                        disabled={!amount || Number(amount) <= 0 || !!errorLimitRemove}
+                      >
+                        <MinusCircle className="w-4 h-4" />
+                        Retirer des fonds
+                      </Button>
+                    </DialogTrigger>
+
+                    <DialogContent className="bg-white border border-slate-200 text-slate-900 max-w-md rounded-2xl shadow-xl">
+                      <DialogHeader>
+                        <DialogTitle className="text-slate-900 text-lg font-bold flex items-center gap-2">
+                          <MinusCircle className="w-5 h-5 text-rose-600" />
+                          Confirmer le retrait
+                        </DialogTitle>
+                        <DialogDescription className="text-slate-500 text-xs">
+                          Retrait de <strong>{amount} $ht</strong> de la balance de{" "}
+                          <strong>{form.Nom} {form.Prenom}</strong>.
+                        </DialogDescription>
+                      </DialogHeader>
+
+                      <div className="py-3 space-y-2">
+                        <label className="text-xs font-semibold text-slate-700 block">
+                          Entrez votre mot de passe gestionnaire pour autoriser :
+                        </label>
+                        <div className="relative">
+                          <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                          <Input
+                            type="password"
+                            placeholder="Mot de passe"
+                            value={passDelete}
+                            onChange={(e) => setPassDelete(e.target.value)}
+                            className="pl-9 bg-slate-50 border-slate-200 text-slate-900"
+                            autoFocus
+                          />
+                        </div>
+                        {passDelete && (
+                          <div className="text-xs font-semibold pt-1">
+                            {passDeleteOk ? (
+                              <span className="text-emerald-600 flex items-center gap-1">
+                                <CheckCircle2 className="w-3.5 h-3.5" /> Mot de passe correct (Autorisé)
+                              </span>
+                            ) : (
+                              <span className="text-rose-600 flex items-center gap-1">
+                                <AlertCircle className="w-3.5 h-3.5" /> Mot de passe incorrect
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+
+                      <DialogFooter className="gap-2 sm:gap-0">
+                        <Button
+                          variant="outline"
+                          onClick={() => {
+                            setOpenRemove(false);
+                            setPassDelete("");
+                            setPassDeleteOk(false);
+                          }}
+                          className="border-slate-200 text-slate-600 hover:bg-slate-50"
+                        >
+                          Annuler
+                        </Button>
+                        <Button
+                          variant="destructive"
+                          onClick={removeFunds}
+                          disabled={loadingRemove || !passDeleteOk}
+                          className="bg-rose-600 hover:bg-rose-700 text-white font-semibold"
+                        >
+                          {loadingRemove ? "Traitement..." : "Confirmer le retrait"}
+                        </Button>
+                      </DialogFooter>
+                    </DialogContent>
+                  </Dialog>
+                </div>
+              </div>
+            )}
+
+            {/* SECTION: Proposition de Prêt & Simulation avec Taux localStorage */}
+            <div className="bg-violet-50/60 border border-violet-200 rounded-2xl p-5 shadow-xs space-y-3 print:hidden">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-lg bg-violet-100 text-violet-700 flex items-center justify-center">
+                    <HandCoins className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-violet-900">
+                      Option de Prêt pour {form.Nom} {form.Prenom}
+                    </h3>
+                    <p className="text-xs text-violet-600">
+                      Taux d&apos;intérêt configuré : <strong>{storedTaux}%</strong> (enregistré dans vos paramètres)
+                    </p>
+                  </div>
+                </div>
+
+                <Button
+                  onClick={() => {
+                    const url = `/dashboard/prets?clientId=${form.id}&nom=${encodeURIComponent(
+                      form.Nom
+                    )}&prenom=${encodeURIComponent(
+                      form.Prenom
+                    )}&phone=${encodeURIComponent(
+                      form.Phone || ""
+                    )}&nif=${encodeURIComponent(
+                      form.NIF || ""
+                    )}&montant=${loanSimMontant}`;
+                    router.push(url);
+                  }}
+                  className="bg-violet-600 hover:bg-violet-700 text-white font-semibold text-xs rounded-xl h-9 gap-1.5 shadow-xs"
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  Accorder un prêt à ce client
+                </Button>
+              </div>
+
+              {/* Mini simulation preview */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-2 border-t border-violet-200/80 text-xs">
+                <div>
+                  <label className="text-[11px] text-slate-500 block mb-0.5">Montant ($)</label>
+                  <Input
+                    type="number"
+                    value={loanSimMontant}
+                    onChange={(e) => setLoanSimMontant(e.target.value)}
+                    className="h-8 bg-white border-slate-200 text-xs font-bold text-slate-900 rounded-lg"
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] text-slate-500 block mb-0.5">Durée (mois)</label>
+                  <Input
+                    type="number"
+                    value={loanSimMois}
+                    onChange={(e) => setLoanSimMois(e.target.value)}
+                    className="h-8 bg-white border-slate-200 text-xs font-bold text-slate-900 rounded-lg"
+                  />
+                </div>
+                <div className="bg-white p-2 rounded-lg border border-violet-100 flex flex-col justify-center">
+                  <span className="text-[10px] text-slate-400 block uppercase font-medium">Intérêts ({storedTaux}%)</span>
+                  <span className="font-bold text-amber-600">{simTotalInterest.toFixed(2)}$</span>
+                </div>
+                <div className="bg-white p-2 rounded-lg border border-violet-100 flex flex-col justify-center">
+                  <span className="text-[10px] text-slate-400 block uppercase font-medium">Mensualité</span>
+                  <span className="font-bold text-emerald-700">{simMensualite.toFixed(2)}$ / m</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Transactions History Table */}
+            <div className="space-y-3 pt-2">
+              <div className="flex items-center justify-between pb-2 border-b border-slate-200">
+                <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                  <FileText className="w-4 h-4 text-violet-600" />
+                  Historique des Transactions du Carnet
+                </h3>
+                <span className="text-xs text-slate-500">
+                  {form.Plan} cases / jours au total
+                </span>
+              </div>
+
+              <ScrollArea className="w-full h-[520px] rounded-xl">
+                <div className="pr-3 pb-4">
+                  <LockerTable plan={Number(form.Plan)} data={form.Historic} />
+                </div>
+              </ScrollArea>
             </div>
           </div>
         </div>
-        <p className="my-5 md:text-xl font-bold text-center text-gray-700 underline">
-          transactions
+
+        {/* Footer info */}
+        <p className="text-center text-xs text-slate-400 print:hidden">
+          Ti kanè Finance · Système de gestion de prêts et d&apos;épargne
         </p>
-        <p className="text-gray-700 text-center my-4">
-          Historique des transactions.
-        </p>
-        <div className="h-1 bg-gray-700"></div>
-        <ScrollArea className="w-full h-[600px]">
-          <div className="my-10 w-full">
-            <LockerTable plan={Number(form.Plan)} data={form.Historic} />
-          </div>
-        </ScrollArea>
       </div>
     </div>
   );
