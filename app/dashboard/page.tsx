@@ -59,6 +59,8 @@ interface Documents {
   Balance: string;
   TotalBalance: string;
   Plan: string;
+  PlanType?: "jour" | "semaine" | "mois";
+  ContributionAmount?: string;
   Detruit: string;
   Phone?: string;
   NIF?: string;
@@ -509,6 +511,24 @@ export default function Dashboard() {
                   className="cursor-pointer mb-3"
                   onClick={() => router.push(`/open-doc/${data.id}`)}
                 >
+                  <div className="flex items-center justify-between gap-2 mb-1">
+                    <span
+                      className={`text-[10px] font-bold px-2 py-0.5 rounded-md border ${
+                        data.PlanType === "semaine"
+                          ? "bg-indigo-50 text-indigo-700 border-indigo-200"
+                          : data.PlanType === "mois"
+                          ? "bg-violet-50 text-violet-700 border-violet-200"
+                          : "bg-sky-50 text-sky-700 border-sky-200"
+                      }`}
+                    >
+                      {data.PlanType === "semaine"
+                        ? "Plan Hebdo"
+                        : data.PlanType === "mois"
+                        ? "Plan Mensuel"
+                        : "Plan Quotidien"}
+                    </span>
+                  </div>
+
                   <p className="font-bold text-slate-900 text-base hover:text-violet-600 transition-colors">
                     {data.Nom} {data.Prenom}
                   </p>
@@ -566,13 +586,28 @@ export default function Dashboard() {
                   </div>
 
                   {/* Plan metrics */}
-                  <div className="flex items-center justify-between text-xs pt-1 text-slate-600 border-t border-slate-100">
-                    <span>
-                      Carte : <strong className="text-slate-900">{data.DailyMoney}$ht</strong>
-                    </span>
-                    <span>
-                      Durée : <strong className="text-slate-900">{data.Plan} jours</strong>
-                    </span>
+                  <div className="flex items-center justify-between text-xs pt-1.5 text-slate-600 border-t border-slate-100">
+                    <div>
+                      <span className="text-[10px] text-slate-400 block">Cotisation</span>
+                      <strong className="text-slate-900 font-bold">
+                        {data.PlanType === "semaine"
+                          ? `${data.ContributionAmount || (Number(data.DailyMoney) * 7).toString()}$ht / sem`
+                          : data.PlanType === "mois"
+                          ? `${data.ContributionAmount || (Number(data.DailyMoney) * 30).toString()}$ht / mois`
+                          : `${data.DailyMoney}$ht / jour`}
+                      </strong>
+                    </div>
+
+                    <div className="text-right">
+                      <span className="text-[10px] text-slate-400 block">Durée Plan</span>
+                      <strong className="text-slate-900 font-bold">
+                        {data.PlanType === "semaine"
+                          ? `${Math.round(Number(data.Plan) / 7)} sem. (${data.Plan}j)`
+                          : data.PlanType === "mois"
+                          ? `${Math.round(Number(data.Plan) / 30)} mois (${data.Plan}j)`
+                          : `${data.Plan} jours`}
+                      </strong>
+                    </div>
                   </div>
                 </div>
               </div>

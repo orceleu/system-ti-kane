@@ -10,6 +10,8 @@ interface FormData {
   NIF: string;
   Phone: string;
   Plan: number | string;
+  PlanType?: "jour" | "semaine" | "mois";
+  ContributionAmount?: string;
   DailyMoney: string;
   Balance: string;
   TotalBalance: string;
@@ -89,17 +91,98 @@ export function getNumericProgress(
 
   return Math.round(percent);
 }
+export type ContributionPeriod = "jour" | "semaine" | "mois" | "libre";
+
+export interface TransactionItem {
+  id: number;
+  date: string;
+  amount: number;
+  days: number;
+  action: "dep" | "retr";
+  mode: ContributionPeriod;
+  quantite: number;
+}
+
+export function parseHistoric(
+  data: string,
+  dailyMoney: number = 0
+): TransactionItem[] {
+  if (!data || data.trim() === "") return [];
+
+  const entries = data
+    .split(";")
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+  const result: TransactionItem[] = [];
+
+  entries.forEach((item, index) => {
+    const parts = item.split(",");
+    if (parts.length >= 4) {
+      const [date, amountStr, daysStr, actionStr, modeStr, quantiteStr] = parts;
+      const amount = Number(amountStr) || 0;
+      const days =
+        Number(daysStr) || (dailyMoney > 0 ? amount / dailyMoney : 0);
+      const action = actionStr === "retr" ? "retr" : "dep";
+
+      let mode: ContributionPeriod = "jour";
+      let quantite = 1;
+
+      if (modeStr && ["jour", "semaine", "mois", "libre"].includes(modeStr)) {
+        mode = modeStr as ContributionPeriod;
+        quantite = quantiteStr ? Number(quantiteStr) || 1 : 1;
+      } else {
+        if (days >= 30 && days % 30 === 0) {
+          mode = "mois";
+          quantite = days / 30;
+        } else if (days >= 7 && days % 7 === 0) {
+          mode = "semaine";
+          quantite = days / 7;
+        } else if (Number.isInteger(days)) {
+          mode = "jour";
+          quantite = days;
+        } else {
+          mode = "libre";
+          quantite = Number(days.toFixed(1));
+        }
+      }
+
+      result.push({
+        id: index + 1,
+        date,
+        amount,
+        days,
+        action,
+        mode,
+        quantite,
+      });
+    }
+  });
+
+  return result;
+}
+
 export function generateData(
   montant: number,
   montantQuotidien: number,
-  action: "dep" | "retr"
+  action: "dep" | "retr",
+  mode: ContributionPeriod = "jour",
+  quantite?: number
 ): string {
   if (montantQuotidien <= 0) throw new Error("Le plan doit être supérieur à 0");
 
   const now = new Date().toISOString();
   const jours = montant / montantQuotidien;
+  const qte =
+    quantite !== undefined
+      ? quantite
+      : mode === "mois"
+      ? Number((jours / 30).toFixed(2))
+      : mode === "semaine"
+      ? Number((jours / 7).toFixed(2))
+      : Number(jours.toFixed(2));
 
-  return `${now},${montant},${jours},${action};`;
+  return `${now},${montant},${jours},${action},${mode},${qte};`;
 }
 
 export function appendDataRepeated(

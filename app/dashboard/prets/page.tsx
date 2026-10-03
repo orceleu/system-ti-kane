@@ -71,6 +71,8 @@ export interface PlanClient {
   Phone: string;
   NIF: string;
   Plan: string;
+  PlanType?: "jour" | "semaine" | "mois";
+  ContributionAmount?: string;
   DailyMoney: string;
   Balance: string;
   TotalBalance: string;
@@ -567,11 +569,19 @@ function PretsContent() {
                           </span>
                           <span>
                             <span className="text-slate-400">Plan:</span>{" "}
-                            {client.Plan} jours
+                            {client.PlanType === "semaine"
+                              ? `${Math.round(Number(client.Plan) / 7)} sem. (${client.Plan}j)`
+                              : client.PlanType === "mois"
+                              ? `${Math.round(Number(client.Plan) / 30)} mois (${client.Plan}j)`
+                              : `${client.Plan} jours`}
                           </span>
                           <span>
-                            <span className="text-slate-400">Carte:</span>{" "}
-                            {client.DailyMoney}$ht
+                            <span className="text-slate-400">Cotisation:</span>{" "}
+                            {client.PlanType === "semaine"
+                              ? `${client.ContributionAmount || (Number(client.DailyMoney) * 7).toString()}$ht/sem`
+                              : client.PlanType === "mois"
+                              ? `${client.ContributionAmount || (Number(client.DailyMoney) * 30).toString()}$ht/mois`
+                              : `${client.DailyMoney}$ht/j`}
                           </span>
                         </div>
                       </div>
